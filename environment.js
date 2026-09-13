@@ -3,20 +3,17 @@
  * Handles secure URL generation for QR codes and deployment scenarios
  */
 
-// Public Netlify URL - the deployed production URL
-// QR codes must always contain this URL so students can scan
-// them from their phones regardless of where the teacher is running the app
-export const PUBLIC_APP_URL = "https://campus-connect-3d.netlify.app";
+// Set VITE_PUBLIC_APP_URL only when QR codes must use a fixed public URL.
+export const PUBLIC_APP_URL = import.meta.env.VITE_PUBLIC_APP_URL || "";
 
 // Get the appropriate base URL for QR code generation
 // Always returns the public HTTPS URL so QR codes work on student phones
 export function getAppBaseUrl() {
-  // If running on a deployed HTTPS site, use the current origin
+  // Use the deployed origin when the app is running over HTTPS.
   if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:') {
     return window.location.origin;
   }
-  // Fallback to the public Netlify URL (also used in local dev so QR never contains localhost)
-  return PUBLIC_APP_URL;
+  return PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
 }
 
 // Generate a secure QR attendance link

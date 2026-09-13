@@ -24,6 +24,14 @@ A professional Smart Campus Management & Smart Attendance prototype built for th
    npm run dev
 5. Open the local URL shown by Vite.
 
+## Deployment
+
+The frontend can be deployed as a Vite static site on either Vercel or Render.
+
+- **Vercel:** Import the repository. The included `vercel.json` uses `npm run build` and publishes `dist`.
+- **Render:** Create a Static Site from the repository. The included `render.yaml` uses the same build and publish settings.
+- **QR URL:** On HTTPS deployments, QR links automatically use the current deployment origin. For a fixed domain, set `VITE_PUBLIC_APP_URL` in the deployment environment variables.
+
 ## Demo
 Student:
 - Select Student
