@@ -372,13 +372,24 @@ nav{display:grid;gap:5px}.sidebar nav{display:grid;gap:5px;overflow-y:auto;overf
   }
 }
 
-/* Fix for mobile text flickering and turning dark due to composite layering/blur issues */
-.login-hero h1, .login-hero p, .login-card h2, .login-card, .eyebrow {
+/* Fix for mobile text flickering and rendering issues */
+.login-card {
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  perspective: 1000px;
-  -webkit-perspective: 1000px;
+}
+.login-hero h1 {
+  color: #ffffff !important;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+  z-index: 10;
+}
+.login-hero h1 span {
+  color: transparent !important;
+}
+.login-card h2, .eyebrow {
+  color: #ffffff !important;
+  -webkit-font-smoothing: antialiased;
 }
 
