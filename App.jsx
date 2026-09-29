@@ -750,7 +750,8 @@ function uid(prefix = "ID") {
 }
 async function attendanceApi(path, body) {
   try {
-    const response = await fetch(path, {
+    const apiBase = import.meta.env.VITE_API_URL || "";
+    const response = await fetch(apiBase + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
