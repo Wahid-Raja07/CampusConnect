@@ -2,6 +2,7 @@ import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import mongoose from "mongoose";
 
 const port = Number(process.env.PORT || 8787);
 const secret = process.env.ATTENDANCE_TOKEN_SECRET || "campus-plus-development-secret-change-me";
@@ -23,6 +24,25 @@ function loadDotEnv() {
 }
 
 loadDotEnv();
+
+let isMongoConnected = false;
+if (process.env.MONGODB_URI) {
+  mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => { isMongoConnected = true; console.log("Connected to MongoDB!"); })
+    .catch(err => console.error("MongoDB connection error:", err));
+}
+
+const sessionSchema = new mongoose.Schema({
+  id: String,
+  subject: String,
+  section: String,
+  room: String,
+  createdAt: Number,
+  closed: Boolean,
+  attendance: [String]
+});
+const SessionModel = mongoose.model("Session", sessionSchema);
+
 const interviewAssistantSystemPrompt = "You are CampusConnect's Interview and Career Assistant. Help college students prepare for placements and internships with practical, clear, encouraging advice. Answer interview questions, resume and application questions, behavioral and technical preparation questions, career planning questions, and company research questions. When useful, give concise steps, sample answers, frameworks, or practice prompts. Do not invent private company policies or claim access to a student's records. Ask a brief clarifying question when essential details are missing.";
 const careerAssistantSystemPrompt = "You are CampusConnect's Career Path Recommender. Have a natural, practical conversation with college students about careers, education, skills, jobs, internships, roadmaps, courses, technologies, placements, and related goals. Use the student's branch, year, skills, interests, and goals when provided. Give personalized career paths, learning roadmaps, skill recommendations, project ideas, internship guidance, and interview preparation when relevant. Answer normal career questions conversationally, ask useful follow-up questions when context is missing, and do not claim access to private student records.";
 
@@ -56,7 +76,7 @@ function issueToken(session) {
   return `${payload}.${sign(payload)}`;
 }
 
-function verifyToken(token) {
+async function verifyToken(token) {
   if (typeof token !== "string") throw new Error("Missing attendance token.");
   const parts = token.split(".");
   if (parts.length !== 2) throw new Error("Malformed attendance token.");
@@ -68,7 +88,11 @@ function verifyToken(token) {
   try { payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")); } catch { throw new Error("Malformed attendance token."); }
   const now = Math.floor(Date.now() / 1000);
   if (!payload.sessionId || !payload.jti || !payload.exp || payload.exp <= now || payload.iat > now + 1) throw new Error("Attendance QR has expired.");
-  const session = sessions.get(payload.sessionId);
+  
+  let session;
+  if (isMongoConnected) session = await SessionModel.findOne({ id: payload.sessionId });
+  else session = sessions.get(payload.sessionId);
+  
   if (!session || session.closed) throw new Error("Attendance session is closed or unknown.");
   return { payload, session };
 }
@@ -202,21 +226,36 @@ const server = http.createServer(async (request, response) => {
     if (request.url === "/api/attendance/session") {
       requireTeacherRole(body);
       if (!body.sessionId) throw new Error("Session ID is required.");
-      const session = { id: body.sessionId, subject: body.subject || "Data Structures", section: body.section || "CSE-A", room: body.room || "204", createdAt: Date.now(), closed: false, attendance: new Set() };
-      sessions.set(session.id, session);
-      return json(response, 200, { sessionId: session.id, token: issueToken(session), expiresIn: tokenLifetimeSeconds });
+      const sessionData = { id: body.sessionId, subject: body.subject || "Data Structures", section: body.section || "CSE-A", room: body.room || "204", createdAt: Date.now(), closed: false, attendance: [] };
+      if (isMongoConnected) {
+        await SessionModel.create(sessionData);
+      } else {
+        sessionData.attendance = new Set();
+        sessions.set(sessionData.id, sessionData);
+      }
+      return json(response, 200, { sessionId: sessionData.id, token: issueToken(sessionData), expiresIn: tokenLifetimeSeconds });
     }
     if (request.url === "/api/attendance/token") {
       requireTeacherRole(body);
-      const session = sessions.get(body.sessionId);
+      let session;
+      if (isMongoConnected) session = await SessionModel.findOne({ id: body.sessionId });
+      else session = sessions.get(body.sessionId);
+      
       if (!session || session.closed) throw new Error("Attendance session is closed or unknown.");
       return json(response, 200, { token: issueToken(session), expiresIn: tokenLifetimeSeconds });
     }
     if (request.url === "/api/attendance/mark") {
-      const { payload, session } = verifyToken(body.token);
+      const { payload, session } = await verifyToken(body.token);
       if (!body.studentId) throw new Error("Student identity is required.");
-      if (session.attendance.has(body.studentId)) return json(response, 409, { error: "Attendance already marked for this session." });
-      session.attendance.add(body.studentId);
+      
+      if (isMongoConnected) {
+        if (session.attendance.includes(body.studentId)) return json(response, 409, { error: "Attendance already marked for this session." });
+        session.attendance.push(body.studentId);
+        await session.save();
+      } else {
+        if (session.attendance.has(body.studentId)) return json(response, 409, { error: "Attendance already marked for this session." });
+        session.attendance.add(body.studentId);
+      }
       return json(response, 200, { ok: true, sessionId: payload.sessionId, subject: payload.subject, section: payload.section, room: payload.room, markedAt: new Date().toISOString() });
     }
     return json(response, 404, { error: "Not found." });
